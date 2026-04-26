@@ -49,8 +49,9 @@ def simulate_trip(
         cycle_hours_remaining=max(0.0, 70.0 - cycle_used_hours),
     )
 
+    _drive_route(segments, state, legs[:1])
     _add_pickup(segments, state, pickup_location)
-    _drive_route(segments, state, legs)
+    _drive_route(segments, state, legs[1:])
     _add_dropoff(segments, state, dropoff_location)
     _add_final_rest(segments, state)
 
