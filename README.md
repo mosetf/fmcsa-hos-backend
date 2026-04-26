@@ -4,7 +4,8 @@ Django + DRF API for planning truck trips and simulating FMCSA Hours of Service.
 
 ## Current Phase Status
 - Phase 1: Complete (versioned endpoint, ORS route service, Swagger, pytest endpoint coverage)
-- Phase 2+: Pending
+- Phase 2: Complete (HOS simulation engine wired to endpoint, trip segment serialization)
+- Phase 3+: Pending
 
 ## API Versioning
 All business endpoints are versioned under `/api/v1/`.
@@ -39,7 +40,16 @@ All business endpoints are versioned under `/api/v1/`.
     "full_polyline": [],
     "waypoints": []
   },
-  "trip_segments": [],
+  "trip_segments": [
+    {
+      "type": "ON_DUTY_NOT_DRIVING|DRIVING|OFF_DUTY|SLEEPER_BERTH",
+      "label": "string",
+      "start": "ISO datetime",
+      "end": "ISO datetime",
+      "distance_miles": 0,
+      "location": "string|null"
+    }
+  ],
   "log_sheets": []
 }
 ```
@@ -49,6 +59,7 @@ Structured errors:
 - `CYCLE_EXHAUSTED` -> `400`
 - `GEOCODING_FAILED` -> `422`
 - `ROUTING_FAILED` -> `422`
+- `HOS_SIMULATION_FAILED` -> `422`
 
 ## Local Setup
 ```bash
