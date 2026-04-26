@@ -61,7 +61,53 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
     assert len(response.data["trip_segments"]) > 0
     first_segment = response.data["trip_segments"][0]
     assert set(first_segment.keys()) == {"type", "label", "start", "end", "distance_miles", "location"}
-    assert response.data["log_sheets"] == []
+    assert len(response.data["log_sheets"]) >= 1
+    first_sheet = response.data["log_sheets"][0]
+    assert set(first_sheet.keys()) == {"date", "grid", "totals", "total_miles", "total_check", "remarks"}
+
+
+def test_plan_trip_log_sheets_have_required_rows_and_24_hour_total(monkeypatch, api_client, valid_payload):
+    def fake_get_route(current, pickup, dropoff):
+        return {
+            "legs": [
+                {
+                    "from": current,
+                    "to": pickup,
+                    "distance_miles": 181.5,
+                    "duration_hours": 2.72,
+                },
+                {
+                    "from": pickup,
+                    "to": dropoff,
+                    "distance_miles": 287.4,
+                    "duration_hours": 4.35,
+                },
+            ],
+            "total_distance_miles": 468.9,
+            "total_duration_hours": 7.07,
+            "polyline_encoded": "encoded_polyline_value",
+            "full_polyline": [[41.0, -87.0], [39.0, -86.0], [36.0, -86.0]],
+            "waypoints": [
+                {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
+                {"lat": 39.0, "lng": -86.0, "label": "Pickup", "type": "pickup"},
+                {"lat": 36.0, "lng": -86.0, "label": "Dropoff", "type": "dropoff"},
+            ],
+        }
+
+    monkeypatch.setattr("trip_planner.views.get_route", fake_get_route)
+
+    response = api_client.post("/api/v1/plan-trip/", valid_payload, format="json")
+
+    assert response.status_code == 200
+    assert len(response.data["log_sheets"]) >= 1
+    first_sheet = response.data["log_sheets"][0]
+    assert [row["status"] for row in first_sheet["grid"]] == [
+        "OFF_DUTY",
+        "SLEEPER_BERTH",
+        "DRIVING",
+        "ON_DUTY_NOT_DRIVING",
+    ]
+    assert first_sheet["total_check"] == 24.0
 
 
 def test_plan_trip_segments_are_time_chained(monkeypatch, api_client, valid_payload):
