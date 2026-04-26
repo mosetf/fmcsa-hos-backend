@@ -1,5 +1,6 @@
+from datetime import datetime
+
 from rest_framework import serializers
-from django.utils import timezone
 
 
 class TripRequestSerializer(serializers.Serializer):
@@ -11,7 +12,7 @@ class TripRequestSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if "departure_datetime" not in attrs:
-            attrs["departure_datetime"] = timezone.now().replace(
+            attrs["departure_datetime"] = datetime.now().replace(
                 hour=6,
                 minute=0,
                 second=0,

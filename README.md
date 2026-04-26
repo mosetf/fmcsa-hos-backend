@@ -2,22 +2,79 @@
 
 Django + DRF API for planning truck trips and simulating FMCSA Hours of Service.
 
-## Scope (from `plan.md` / `phases.md`)
-- Phase 1: Django project setup + OpenRouteService integration
-- Phase 2: Input serializer + structured API errors
-- Phase 3: HOS simulation engine
-- Phase 4: Build final API response with map/rest/fuel/log data
-- Phase 5: Backend testing + deployment
+## Current Phase Status
+- Phase 1: Complete (versioned endpoint, ORS route service, Swagger, pytest endpoint coverage)
+- Phase 2+: Pending
 
-## Quick start
+## API Versioning
+All business endpoints are versioned under `/api/v1/`.
+
+## Endpoints
+- `POST /api/v1/plan-trip/`
+- `GET /api/schema/` (OpenAPI schema)
+- `GET /api/docs/` (Swagger UI)
+
+## Request Contract
+`POST /api/v1/plan-trip/`
+
+```json
+{
+  "current_location": "Chicago, IL",
+  "pickup_location": "Indianapolis, IN",
+  "dropoff_location": "Nashville, TN",
+  "cycle_used_hours": 10,
+  "departure_datetime": "2026-04-26T06:00:00"
+}
+```
+
+`departure_datetime` is optional. If omitted, backend defaults to local date at `06:00`.
+
+## Response Contract (Phase 1)
+```json
+{
+  "route": {
+    "legs": [],
+    "total_distance_miles": 0,
+    "total_duration_hours": 0,
+    "full_polyline": [],
+    "waypoints": []
+  },
+  "trip_segments": [],
+  "log_sheets": []
+}
+```
+
+Structured errors:
+- `INVALID_INPUT` -> `400`
+- `CYCLE_EXHAUSTED` -> `400`
+- `GEOCODING_FAILED` -> `422`
+- `ROUTING_FAILED` -> `422`
+
+## Local Setup
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-# then scaffold Django project:
-# django-admin startproject core .
-# python manage.py startapp trip_planner
+python manage.py migrate
+python manage.py runserver
 ```
 
-## Environment
-Copy `.env.example` to `.env` and set values.
+## Environment Variables
+Copy `.env.example` to `.env`.
+
+- `ORS_API_KEY`
+- `CORS_ALLOWED_ORIGINS`
+- `DJANGO_DEBUG`
+- `DJANGO_SECRET_KEY`
+- `ALLOWED_HOSTS` (optional, comma-separated)
+
+## Testing
+Tests are run with `pytest`.
+
+```bash
+pytest -q
+```
+
+Scope:
+- Endpoint-first API behavior tests
+- Known edge cases per phase
