@@ -17,6 +17,9 @@ class PlanTripView(APIView):
     - dropoff_location (str): Dropoff text for geocoding.
     - cycle_used_hours (float): Current 70-hour cycle usage in [0, 70].
     - departure_datetime (str, optional): ISO datetime; defaults to today 06:00.
+    Query params:
+    - detail (compact|full, optional): Response detail mode. Default compact.
+    - debug (true|false, optional): When true, includes raw polyline arrays.
 
     Success response (200, Phase 2):
     {
@@ -47,8 +50,39 @@ class PlanTripView(APIView):
             status=status_code,
         )
 
+    @staticmethod
+    def _parse_debug_flag(value: str | None) -> bool:
+        return (value or "").strip().lower() in {"1", "true", "yes"}
+
+    @staticmethod
+    def _build_route_response(route: dict, detail: str, debug: bool) -> dict:
+        response = {
+            "legs": route["legs"],
+            "total_distance_miles": route["total_distance_miles"],
+            "total_duration_hours": route["total_duration_hours"],
+            "waypoints": route.get("waypoints", []),
+            "polyline_encoded": route["polyline_encoded"],
+        }
+        if detail == "full":
+            response["polyline_point_count"] = route.get(
+                "polyline_point_count",
+                len(route.get("full_polyline", [])),
+            )
+        if debug:
+            response["full_polyline"] = route["full_polyline"]
+        return response
+
     def post(self, request):
         """POST /api/v1/plan-trip/ returning route data with structured errors."""
+        detail = (request.query_params.get("detail") or "compact").strip().lower()
+        if detail not in {"compact", "full"}:
+            return self._error_response(
+                code="INVALID_INPUT",
+                message="Query param 'detail' must be one of: compact, full.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        debug = self._parse_debug_flag(request.query_params.get("debug"))
+
         serializer = TripRequestSerializer(data=request.data)
 
         if not serializer.is_valid():
@@ -125,7 +159,7 @@ class PlanTripView(APIView):
 
         return Response(
             {
-                "route": route,
+                "route": self._build_route_response(route=route, detail=detail, debug=debug),
                 "trip_segments": serialized_segments,
                 "log_sheets": [],
             }
