@@ -17,7 +17,8 @@ class PlanTripView(APIView):
     - pickup_location (str): Pickup text for geocoding.
     - dropoff_location (str): Dropoff text for geocoding.
     - cycle_used_hours (float): Current 70-hour cycle usage in [0, 70].
-    - departure_datetime (str, optional): ISO datetime; defaults to today 06:00.
+    - departure_datetime (str, optional): ISO datetime; defaults to current server time.
+    - driver_name/carrier_name/truck_number/trailer_number/co_driver/shipping_doc (str, optional): Log header details.
     Query params:
     - detail (compact|full, optional): Response detail mode. Default compact.
     - debug (true|false, optional): When true, includes raw polyline arrays.
@@ -162,6 +163,7 @@ class PlanTripView(APIView):
         return Response(
             {
                 "route": self._build_route_response(route=route, detail=detail, debug=debug),
+                "log_details": data["log_details"],
                 "trip_segments": serialized_segments,
                 "log_sheets": log_sheets,
             }

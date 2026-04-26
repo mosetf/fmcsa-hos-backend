@@ -1,6 +1,7 @@
 import pytest
 
 from trip_planner.route_service import GeocodingError, RoutingError
+from trip_planner.serializers import TripRequestSerializer
 
 
 @pytest.fixture
@@ -53,7 +54,15 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
     response = api_client.post("/api/v1/plan-trip/", valid_payload, format="json")
 
     assert response.status_code == 200
-    assert set(response.data.keys()) == {"route", "trip_segments", "log_sheets"}
+    assert set(response.data.keys()) == {"route", "log_details", "trip_segments", "log_sheets"}
+    assert response.data["log_details"] == {
+        "driver_name": "N/A",
+        "carrier_name": "Trip Planner Co.",
+        "truck_number": "N/A",
+        "trailer_number": "N/A",
+        "co_driver": "N/A",
+        "shipping_doc": "N/A",
+    }
     assert len(response.data["route"]["legs"]) == 2
     assert response.data["route"]["polyline_encoded"] == "encoded_polyline_value"
     assert "full_polyline" not in response.data["route"]
@@ -64,6 +73,30 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
     assert len(response.data["log_sheets"]) >= 1
     first_sheet = response.data["log_sheets"][0]
     assert set(first_sheet.keys()) == {"date", "grid", "totals", "total_miles", "total_check", "remarks"}
+
+
+def test_trip_request_serializer_accepts_optional_log_details(valid_payload):
+    payload = {
+        **valid_payload,
+        "driver_name": "Avery Miles",
+        "carrier_name": "Northline Freight",
+        "truck_number": "TX-104",
+        "trailer_number": "TR-88",
+        "co_driver": "Sam Lee",
+        "shipping_doc": "BOL-90210",
+    }
+
+    serializer = TripRequestSerializer(data=payload)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["log_details"] == {
+        "driver_name": "Avery Miles",
+        "carrier_name": "Northline Freight",
+        "truck_number": "TX-104",
+        "trailer_number": "TR-88",
+        "co_driver": "Sam Lee",
+        "shipping_doc": "BOL-90210",
+    }
 
 
 def test_plan_trip_log_sheets_have_required_rows_and_24_hour_total(monkeypatch, api_client, valid_payload):
