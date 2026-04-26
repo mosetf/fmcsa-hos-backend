@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from trip_planner.hos_engine import TripSegment
 from trip_planner.log_builder import build_log_sheets
@@ -113,3 +113,21 @@ def test_log_builder_no_segment_crosses_days_after_split():
                 assert 0.0 <= segment["start_hour"] <= 24.0
                 assert 0.0 <= segment["end_hour"] <= 24.0
                 assert segment["start_hour"] <= segment["end_hour"]
+
+
+def test_log_builder_handles_timezone_aware_segments():
+    segments = [
+        TripSegment(
+            type="DRIVING",
+            label="Aware overnight drive",
+            start=datetime(2024, 4, 26, 22, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2024, 4, 27, 2, 0, 0, tzinfo=timezone.utc),
+            distance_miles=200.0,
+        )
+    ]
+
+    sheets = build_log_sheets(segments)
+
+    assert len(sheets) == 2
+    assert sheets[0]["total_check"] == 24.0
+    assert sheets[1]["total_check"] == 24.0
