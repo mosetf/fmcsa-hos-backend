@@ -12,14 +12,17 @@ DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-hgv/geo
 
 
 class GeocodingError(Exception):
+    """Raised when a location string cannot be resolved by ORS."""
     pass
 
 
 class RoutingError(Exception):
+    """Raised when ORS routing fails or returns unusable route data."""
     pass
 
 
 def _rdp(points: List[List[float]], epsilon: float) -> List[List[float]]:
+    """Simplify a polyline with the Ramer-Douglas-Peucker algorithm."""
     if len(points) <= 2:
         return points
 
@@ -53,12 +56,14 @@ def _rdp(points: List[List[float]], epsilon: float) -> List[List[float]]:
 
 
 def _simplify_polyline(polyline: List[List[float]], epsilon: float = 0.0001) -> List[List[float]]:
+    """Reduce route geometry density before encoding it for API responses."""
     if not polyline:
         return []
     return _rdp(polyline, epsilon)
 
 
 def _encode_polyline(polyline: List[List[float]]) -> str:
+    """Encode `[lat, lng]` points into a Google-style polyline string."""
     result = []
     prev_lat = 0
     prev_lng = 0
@@ -87,6 +92,7 @@ def _validate_route_output(
     polyline_point_count: int,
     waypoints: List[Dict[str, object]],
 ) -> None:
+    """Validate the assembled route payload before returning it to the API layer."""
     if len(waypoints) != 3:
         raise RoutingError("Expected exactly three base waypoints")
     if len(legs) != 2:
@@ -104,6 +110,7 @@ def _validate_route_output(
 
 
 def geocode(location: str, api_key: str) -> Dict[str, float | str]:
+    """Geocode one location string into a normalized `{lat, lng, label}` mapping."""
     params = {"api_key": api_key, "text": location, "size": 1}
 
     try:
@@ -124,6 +131,7 @@ def _request_directions(
     coordinates: List[List[float]],
     api_key: str,
 ) -> Dict[str, object]:
+    """Request ORS directions and normalize distance, duration, and geometry."""
     payload = {
         "coordinates": coordinates,
         "instructions": False,
@@ -178,6 +186,7 @@ def _request_directions(
 
 
 def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
+    """Build the route payload for the current, pickup, and dropoff locations."""
     api_key = settings.ORS_API_KEY
     if not api_key:
         raise RoutingError("ORS_API_KEY is missing")
