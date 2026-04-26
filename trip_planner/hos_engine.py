@@ -8,6 +8,7 @@ EPSILON = 1e-6
 
 @dataclass
 class RouteLeg:
+    """A routed leg between two named locations."""
     from_location: str
     to_location: str
     distance_miles: float
@@ -16,6 +17,7 @@ class RouteLeg:
 
 @dataclass
 class TripSegment:
+    """A timestamped duty-status segment produced by the HOS engine."""
     type: str
     label: str
     start: datetime
@@ -26,6 +28,7 @@ class TripSegment:
 
 @dataclass
 class EngineState:
+    """Mutable simulation state used while expanding route legs into trip segments."""
     clock_time: datetime
     shift_start_time: datetime
     driving_hours_today: float = 0.0
@@ -42,6 +45,7 @@ def simulate_trip(
     pickup_location: str,
     dropoff_location: str,
 ) -> List[TripSegment]:
+    """Simulate a trip under FMCSA HOS rules and return chained trip segments."""
     segments: List[TripSegment] = []
     state = EngineState(
         clock_time=departure_datetime,
@@ -59,6 +63,7 @@ def simulate_trip(
 
 
 def _add_pickup(segments: List[TripSegment], state: EngineState, location: str) -> None:
+    """Append the fixed one-hour pickup stop at the pickup location."""
     duration = timedelta(hours=1)
     segments.append(
         TripSegment(
@@ -76,6 +81,7 @@ def _add_pickup(segments: List[TripSegment], state: EngineState, location: str) 
 
 
 def _add_dropoff(segments: List[TripSegment], state: EngineState, location: str) -> None:
+    """Append the fixed one-hour dropoff stop at the dropoff location."""
     duration = timedelta(hours=1)
     segments.append(
         TripSegment(
@@ -92,6 +98,7 @@ def _add_dropoff(segments: List[TripSegment], state: EngineState, location: str)
 
 
 def _add_rest(segments: List[TripSegment], state: EngineState, hours: float, label: str) -> None:
+    """Append an off-duty break or reset and update the driver's duty clocks."""
     duration = timedelta(hours=hours)
     segments.append(
         TripSegment(
@@ -111,6 +118,7 @@ def _add_rest(segments: List[TripSegment], state: EngineState, hours: float, lab
 
 
 def _add_fuel_stop(segments: List[TripSegment], state: EngineState) -> None:
+    """Append a fuel stop and reset the miles-since-fuel counter."""
     duration = timedelta(hours=0.5)
     segments.append(
         TripSegment(
@@ -127,10 +135,12 @@ def _add_fuel_stop(segments: List[TripSegment], state: EngineState) -> None:
 
 
 def _hours_in_window(state: EngineState) -> float:
+    """Return elapsed hours since the current 14-hour shift window began."""
     return (state.clock_time - state.shift_start_time).total_seconds() / 3600
 
 
 def _drive_route(segments: List[TripSegment], state: EngineState, legs: List[RouteLeg]) -> None:
+    """Expand route legs into driving, break, fuel, and reset segments."""
     for leg in legs:
         if leg.duration_hours <= 0:
             raise ValueError("Invalid leg duration")
@@ -201,6 +211,7 @@ def _drive_route(segments: List[TripSegment], state: EngineState, legs: List[Rou
 
 
 def _add_final_rest(segments: List[TripSegment], state: EngineState) -> None:
+    """Append the trailing off-duty segment after trip completion."""
     segments.append(
         TripSegment(
             type="OFF_DUTY",
