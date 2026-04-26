@@ -62,6 +62,7 @@ def _request_directions(
         "instructions": False,
         "geometry": True,
         "units": "mi",
+        "radiuses": [2000] * len(coordinates),
     }
     headers = {
         "Authorization": api_key,
@@ -75,9 +76,19 @@ def _request_directions(
             headers=headers,
             timeout=20,
         )
-        response.raise_for_status()
     except requests.RequestException as exc:
         raise RoutingError("Failed to fetch route from ORS") from exc
+
+    if response.status_code >= 400:
+        try:
+            error_payload = response.json()
+            error_message = error_payload.get("error", {}).get("message", response.text)
+            error_code = error_payload.get("error", {}).get("code")
+            if error_code:
+                raise RoutingError(f"ORS error {error_code}: {error_message}")
+            raise RoutingError(f"ORS error: {error_message}")
+        except ValueError:
+            raise RoutingError(f"ORS error: HTTP {response.status_code}") from None
 
     data = response.json()
     features = data.get("features", [])
