@@ -68,3 +68,21 @@ def test_invalid_leg_duration_raises_value_error():
             dropoff_location="B",
         )
 
+
+def test_pickup_occurs_after_arriving_at_pickup_location():
+    segments = simulate_trip(
+        legs=[
+            RouteLeg(from_location="Chicago", to_location="Indianapolis", distance_miles=180, duration_hours=3.0),
+            RouteLeg(from_location="Indianapolis", to_location="Nashville", distance_miles=280, duration_hours=5.0),
+        ],
+        departure_datetime=BASE_TIME,
+        cycle_used_hours=0,
+        pickup_location="Indianapolis",
+        dropoff_location="Nashville",
+    )
+
+    assert segments[0].type == "DRIVING"
+    assert segments[0].label == "Drive: Chicago -> Indianapolis"
+    assert segments[1].type == "ON_DUTY_NOT_DRIVING"
+    assert segments[1].label == "Pickup"
+    assert segments[1].location == "Indianapolis"
