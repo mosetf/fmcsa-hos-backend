@@ -19,9 +19,72 @@ class RoutingError(Exception):
     pass
 
 
+def _rdp(points: List[List[float]], epsilon: float) -> List[List[float]]:
+    if len(points) <= 2:
+        return points
+
+    start = points[0]
+    end = points[-1]
+    max_distance = -1.0
+    max_index = 0
+
+    sx, sy = start[1], start[0]
+    ex, ey = end[1], end[0]
+    dx = ex - sx
+    dy = ey - sy
+
+    for idx in range(1, len(points) - 1):
+        px, py = points[idx][1], points[idx][0]
+        if dx == 0 and dy == 0:
+            distance = ((px - sx) ** 2 + (py - sy) ** 2) ** 0.5
+        else:
+            numerator = abs(dy * px - dx * py + ex * sy - ey * sx)
+            denominator = (dx ** 2 + dy ** 2) ** 0.5
+            distance = numerator / denominator
+        if distance > max_distance:
+            max_distance = distance
+            max_index = idx
+
+    if max_distance > epsilon:
+        left = _rdp(points[: max_index + 1], epsilon)
+        right = _rdp(points[max_index:], epsilon)
+        return left[:-1] + right
+    return [start, end]
+
+
+def _simplify_polyline(polyline: List[List[float]], epsilon: float = 0.0001) -> List[List[float]]:
+    if not polyline:
+        return []
+    return _rdp(polyline, epsilon)
+
+
+def _encode_polyline(polyline: List[List[float]]) -> str:
+    result = []
+    prev_lat = 0
+    prev_lng = 0
+
+    for lat, lng in polyline:
+        lat_i = int(round(lat * 1e5))
+        lng_i = int(round(lng * 1e5))
+        for value in (lat_i - prev_lat, lng_i - prev_lng):
+            shifted = value << 1
+            if value < 0:
+                shifted = ~shifted
+            while shifted >= 0x20:
+                result.append(chr((0x20 | (shifted & 0x1F)) + 63))
+                shifted >>= 5
+            result.append(chr(shifted + 63))
+        prev_lat = lat_i
+        prev_lng = lng_i
+
+    return "".join(result)
+
+
 def _validate_route_output(
     legs: List[Dict[str, object]],
     full_polyline: List[List[float]],
+    polyline_encoded: str,
+    polyline_point_count: int,
     waypoints: List[Dict[str, object]],
 ) -> None:
     if len(waypoints) != 3:
@@ -30,6 +93,10 @@ def _validate_route_output(
         raise RoutingError("Expected exactly two route legs")
     if not full_polyline:
         raise RoutingError("Route polyline is empty")
+    if not polyline_encoded:
+        raise RoutingError("Encoded polyline is empty")
+    if polyline_point_count <= 0:
+        raise RoutingError("Polyline point count is invalid")
     if any(float(leg.get("distance_miles", 0.0)) <= 0 for leg in legs):
         raise RoutingError("Route contains a leg with non-positive distance")
     if any(float(leg.get("duration_hours", 0.0)) <= 0 for leg in legs):
@@ -167,9 +234,14 @@ def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
         },
     ]
 
+    simplified_polyline = _simplify_polyline(full_route["polyline"])
+    polyline_encoded = _encode_polyline(simplified_polyline)
+
     _validate_route_output(
         legs=legs,
         full_polyline=full_route["polyline"],
+        polyline_encoded=polyline_encoded,
+        polyline_point_count=len(simplified_polyline),
         waypoints=waypoints,
     )
 
@@ -178,5 +250,7 @@ def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
         "total_distance_miles": full_route["distance_miles"],
         "total_duration_hours": full_route["duration_hours"],
         "full_polyline": full_route["polyline"],
+        "polyline_encoded": polyline_encoded,
+        "polyline_point_count": len(simplified_polyline),
         "waypoints": waypoints,
     }
