@@ -11,12 +11,12 @@ Django + DRF API for planning truck trips and simulating FMCSA Hours of Service.
 All business endpoints are versioned under `/api/v1/`.
 
 ## Endpoints
-- `POST /api/v1/plan-trip/`
+- `POST /api/v1/plan-trip/?detail=compact|full`
 - `GET /api/schema/` (OpenAPI schema)
 - `GET /api/docs/` (Swagger UI)
 
 ## Request Contract
-`POST /api/v1/plan-trip/`
+`POST /api/v1/plan-trip/?detail=compact|full`
 
 ```json
 {
@@ -30,14 +30,20 @@ All business endpoints are versioned under `/api/v1/`.
 
 `departure_datetime` is optional. If omitted, backend defaults to local date at `06:00`.
 
-## Response Contract (Phase 1)
+`detail=compact` is default.
+
+`detail=full` adds non-essential metadata for diagnostics.
+
+`debug=true` can include raw polyline arrays for troubleshooting.
+
+## Response Contract (Phase 2)
 ```json
 {
   "route": {
     "legs": [],
     "total_distance_miles": 0,
     "total_duration_hours": 0,
-    "full_polyline": [],
+    "polyline_encoded": "string",
     "waypoints": []
   },
   "trip_segments": [
