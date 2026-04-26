@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .hos_engine import RouteLeg, simulate_trip
+from .log_builder import build_log_sheets
 from .route_service import GeocodingError, RoutingError, get_route
 from .serializers import TripRequestSerializer
 
@@ -21,17 +22,17 @@ class PlanTripView(APIView):
     - detail (compact|full, optional): Response detail mode. Default compact.
     - debug (true|false, optional): When true, includes raw polyline arrays.
 
-    Success response (200, Phase 2):
+    Success response (200):
     {
       "route": {
         "legs": [...],
         "total_distance_miles": 0.0,
         "total_duration_hours": 0.0,
-        "full_polyline": [[lat, lng], ...],
+        "polyline_encoded": "....",
         "waypoints": [...]
       },
       "trip_segments": [...],
-      "log_sheets": []
+      "log_sheets": [...]
     }
 
     Error response:
@@ -156,11 +157,12 @@ class PlanTripView(APIView):
             }
             for segment in trip_segments
         ]
+        log_sheets = build_log_sheets(trip_segments)
 
         return Response(
             {
                 "route": self._build_route_response(route=route, detail=detail, debug=debug),
                 "trip_segments": serialized_segments,
-                "log_sheets": [],
+                "log_sheets": log_sheets,
             }
         )
