@@ -45,3 +45,6 @@ def test_get_route_excludes_per_leg_geometry(monkeypatch):
     assert len(result["legs"]) == 2
     assert set(result["legs"][0].keys()) == {"from", "to", "distance_miles", "duration_hours"}
     assert set(result["legs"][1].keys()) == {"from", "to", "distance_miles", "duration_hours"}
+    assert isinstance(result["polyline_encoded"], str)
+    assert result["polyline_encoded"]
+    assert result["polyline_point_count"] > 0
