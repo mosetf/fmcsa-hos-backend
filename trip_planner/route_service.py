@@ -126,14 +126,12 @@ def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
             "to": pickup,
             "distance_miles": leg_one["distance_miles"],
             "duration_hours": leg_one["duration_hours"],
-            "geometry": leg_one["polyline"],
         },
         {
             "from": pickup,
             "to": dropoff,
             "distance_miles": leg_two["distance_miles"],
             "duration_hours": leg_two["duration_hours"],
-            "geometry": leg_two["polyline"],
         },
     ]
 
