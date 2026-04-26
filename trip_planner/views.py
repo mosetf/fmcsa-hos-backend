@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .hos_engine import RouteLeg, simulate_trip
 from .route_service import GeocodingError, RoutingError, get_route
 from .serializers import TripRequestSerializer
 
@@ -17,7 +18,7 @@ class PlanTripView(APIView):
     - cycle_used_hours (float): Current 70-hour cycle usage in [0, 70].
     - departure_datetime (str, optional): ISO datetime; defaults to today 06:00.
 
-    Success response (200):
+    Success response (200, Phase 2):
     {
       "route": {
         "legs": [...],
@@ -26,14 +27,14 @@ class PlanTripView(APIView):
         "full_polyline": [[lat, lng], ...],
         "waypoints": [...]
       },
-      "trip_segments": [],
+      "trip_segments": [...],
       "log_sheets": []
     }
 
     Error response:
     {
       "error": {
-        "code": "INVALID_INPUT|CYCLE_EXHAUSTED|GEOCODING_FAILED|ROUTING_FAILED",
+        "code": "INVALID_INPUT|CYCLE_EXHAUSTED|GEOCODING_FAILED|ROUTING_FAILED|HOS_SIMULATION_FAILED",
         "message": "details"
       }
     }
@@ -85,10 +86,47 @@ class PlanTripView(APIView):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
+        legs = [
+            RouteLeg(
+                from_location=leg["from"],
+                to_location=leg["to"],
+                distance_miles=leg["distance_miles"],
+                duration_hours=leg["duration_hours"],
+            )
+            for leg in route["legs"]
+        ]
+
+        try:
+            trip_segments = simulate_trip(
+                legs=legs,
+                departure_datetime=data["departure_datetime"],
+                cycle_used_hours=data["cycle_used_hours"],
+                pickup_location=data["pickup_location"],
+                dropoff_location=data["dropoff_location"],
+            )
+        except (ValueError, RuntimeError) as exc:
+            return self._error_response(
+                code="HOS_SIMULATION_FAILED",
+                message=str(exc),
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        serialized_segments = [
+            {
+                "type": segment.type,
+                "label": segment.label,
+                "start": segment.start.isoformat(),
+                "end": segment.end.isoformat(),
+                "distance_miles": round(segment.distance_miles, 2),
+                "location": segment.location,
+            }
+            for segment in trip_segments
+        ]
+
         return Response(
             {
                 "route": route,
-                "trip_segments": [],
+                "trip_segments": serialized_segments,
                 "log_sheets": [],
             }
         )
