@@ -1,9 +1,25 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _split_csv_env(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _is_valid_origin(value: str) -> bool:
+    parsed = urlparse(value)
+    return bool(parsed.scheme and parsed.netloc)
+
+
+def _parse_cors_allowed_origins(value: str) -> list[str]:
+    return [origin for origin in _split_csv_env(value) if _is_valid_origin(origin)]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     raise ValueError("DJANGO_SECRET_KEY is not set")
@@ -93,7 +109,8 @@ STATIC_URL = 'static/'
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:3000"
-).split(",")
+)
+CORS_ALLOWED_ORIGINS = _parse_cors_allowed_origins(CORS_ALLOWED_ORIGINS)
 
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 if not ORS_API_KEY:
