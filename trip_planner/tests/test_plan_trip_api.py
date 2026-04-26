@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 
 from trip_planner.route_service import GeocodingError, RoutingError
 
@@ -30,14 +29,12 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
                     "to": pickup,
                     "distance_miles": 181.5,
                     "duration_hours": 2.72,
-                    "geometry": [[41.0, -87.0], [40.0, -86.0]],
                 },
                 {
                     "from": pickup,
                     "to": dropoff,
                     "distance_miles": 287.4,
                     "duration_hours": 4.35,
-                    "geometry": [[40.0, -86.0], [36.0, -86.0]],
                 },
             ],
             "total_distance_miles": 468.9,
@@ -57,6 +54,7 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
     assert response.status_code == 200
     assert set(response.data.keys()) == {"route", "trip_segments", "log_sheets"}
     assert len(response.data["route"]["legs"]) == 2
+    assert all("geometry" not in leg for leg in response.data["route"]["legs"])
     assert response.data["trip_segments"] == []
     assert response.data["log_sheets"] == []
 
