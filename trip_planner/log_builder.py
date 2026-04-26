@@ -46,7 +46,7 @@ def _split_one_segment(segment: TripSegment) -> list[TripSegment]:
     total_seconds = (segment.end - segment.start).total_seconds()
 
     while current.date() < segment.end.date():
-        midnight = datetime.combine(current.date() + timedelta(days=1), time.min)
+        midnight = _day_boundary(current.date() + timedelta(days=1), current.tzinfo)
         part_seconds = (midnight - current).total_seconds()
         ratio = part_seconds / total_seconds
         distance = round(segment.distance_miles * ratio, 4)
@@ -61,7 +61,8 @@ def _split_one_segment(segment: TripSegment) -> list[TripSegment]:
 
 def _build_day_sheet(day: str, day_segments: list[TripSegment]) -> dict:
     day_date = datetime.fromisoformat(day).date()
-    day_start = datetime.combine(day_date, time.min)
+    tzinfo = day_segments[0].start.tzinfo if day_segments else None
+    day_start = _day_boundary(day_date, tzinfo)
     day_end = day_start + timedelta(days=1)
 
     normalized_segments = _fill_day_gaps(day_segments=day_segments, day_start=day_start, day_end=day_end)
@@ -181,3 +182,7 @@ def _trim_segment_start(segment: TripSegment, new_start: datetime) -> TripSegmen
     else:
         distance = round(segment.distance_miles * (trimmed_seconds / original_seconds), 4)
     return replace(segment, start=new_start, distance_miles=distance)
+
+
+def _day_boundary(day_date, tzinfo):
+    return datetime.combine(day_date, time.min, tzinfo=tzinfo)
