@@ -39,6 +39,7 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
             ],
             "total_distance_miles": 468.9,
             "total_duration_hours": 7.07,
+            "polyline_encoded": "encoded_polyline_value",
             "full_polyline": [[41.0, -87.0], [39.0, -86.0], [36.0, -86.0]],
             "waypoints": [
                 {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
@@ -54,6 +55,8 @@ def test_plan_trip_success_returns_expected_shape(monkeypatch, api_client, valid
     assert response.status_code == 200
     assert set(response.data.keys()) == {"route", "trip_segments", "log_sheets"}
     assert len(response.data["route"]["legs"]) == 2
+    assert response.data["route"]["polyline_encoded"] == "encoded_polyline_value"
+    assert "full_polyline" not in response.data["route"]
     assert all("geometry" not in leg for leg in response.data["route"]["legs"])
     assert len(response.data["trip_segments"]) > 0
     first_segment = response.data["trip_segments"][0]
@@ -80,6 +83,7 @@ def test_plan_trip_segments_are_time_chained(monkeypatch, api_client, valid_payl
             ],
             "total_distance_miles": 400.0,
             "total_duration_hours": 7.0,
+            "polyline_encoded": "encoded_polyline_value",
             "full_polyline": [[41.0, -87.0], [39.0, -86.0], [36.0, -86.0]],
             "waypoints": [
                 {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
@@ -118,6 +122,7 @@ def test_plan_trip_long_drive_includes_break_segment(monkeypatch, api_client, va
             ],
             "total_distance_miles": 700.0,
             "total_duration_hours": 11.0,
+            "polyline_encoded": "encoded_polyline_value",
             "full_polyline": [[41.0, -87.0], [39.0, -86.0], [36.0, -86.0]],
             "waypoints": [
                 {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
@@ -136,6 +141,65 @@ def test_plan_trip_long_drive_includes_break_segment(monkeypatch, api_client, va
         if seg["type"] == "OFF_DUTY" and "break" in seg["label"].lower()
     ]
     assert break_segments
+
+
+def test_plan_trip_detail_full_adds_point_count_without_raw_polyline(monkeypatch, api_client, valid_payload):
+    def fake_get_route(current, pickup, dropoff):
+        return {
+            "legs": [
+                {"from": current, "to": pickup, "distance_miles": 120.0, "duration_hours": 2.0},
+                {"from": pickup, "to": dropoff, "distance_miles": 80.0, "duration_hours": 1.5},
+            ],
+            "total_distance_miles": 200.0,
+            "total_duration_hours": 3.5,
+            "polyline_encoded": "encoded_polyline_value",
+            "full_polyline": [[41.0, -87.0], [40.0, -86.0], [39.0, -85.0]],
+            "waypoints": [
+                {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
+                {"lat": 40.0, "lng": -86.0, "label": "Pickup", "type": "pickup"},
+                {"lat": 39.0, "lng": -85.0, "label": "Dropoff", "type": "dropoff"},
+            ],
+        }
+
+    monkeypatch.setattr("trip_planner.views.get_route", fake_get_route)
+
+    response = api_client.post("/api/v1/plan-trip/?detail=full", valid_payload, format="json")
+    assert response.status_code == 200
+    assert response.data["route"]["polyline_encoded"] == "encoded_polyline_value"
+    assert response.data["route"]["polyline_point_count"] == 3
+    assert "full_polyline" not in response.data["route"]
+
+
+def test_plan_trip_debug_mode_can_include_raw_polyline(monkeypatch, api_client, valid_payload):
+    def fake_get_route(current, pickup, dropoff):
+        return {
+            "legs": [
+                {"from": current, "to": pickup, "distance_miles": 120.0, "duration_hours": 2.0},
+                {"from": pickup, "to": dropoff, "distance_miles": 80.0, "duration_hours": 1.5},
+            ],
+            "total_distance_miles": 200.0,
+            "total_duration_hours": 3.5,
+            "polyline_encoded": "encoded_polyline_value",
+            "full_polyline": [[41.0, -87.0], [40.0, -86.0], [39.0, -85.0]],
+            "waypoints": [
+                {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
+                {"lat": 40.0, "lng": -86.0, "label": "Pickup", "type": "pickup"},
+                {"lat": 39.0, "lng": -85.0, "label": "Dropoff", "type": "dropoff"},
+            ],
+        }
+
+    monkeypatch.setattr("trip_planner.views.get_route", fake_get_route)
+
+    response = api_client.post("/api/v1/plan-trip/?detail=full&debug=true", valid_payload, format="json")
+    assert response.status_code == 200
+    assert "full_polyline" in response.data["route"]
+    assert len(response.data["route"]["full_polyline"]) == 3
+
+
+def test_plan_trip_invalid_detail_returns_400(api_client, valid_payload):
+    response = api_client.post("/api/v1/plan-trip/?detail=verbose", valid_payload, format="json")
+    assert response.status_code == 400
+    assert response.data["error"]["code"] == "INVALID_INPUT"
 
 
 def test_plan_trip_missing_field_returns_invalid_input(api_client, valid_payload):
