@@ -149,6 +149,47 @@ def test_plan_trip_segments_are_time_chained(monkeypatch, api_client, valid_payl
         assert segments[idx - 1]["end"] == segments[idx]["start"]
 
 
+def test_plan_trip_drives_to_pickup_before_pickup_segment(monkeypatch, api_client, valid_payload):
+    def fake_get_route(current, pickup, dropoff):
+        return {
+            "legs": [
+                {
+                    "from": current,
+                    "to": pickup,
+                    "distance_miles": 180,
+                    "duration_hours": 3.0,
+                },
+                {
+                    "from": pickup,
+                    "to": dropoff,
+                    "distance_miles": 280,
+                    "duration_hours": 5.0,
+                },
+            ],
+            "total_distance_miles": 460.0,
+            "total_duration_hours": 8.0,
+            "polyline_encoded": "encoded_polyline_value",
+            "full_polyline": [[41.0, -87.0], [39.0, -86.0], [36.0, -86.0]],
+            "waypoints": [
+                {"lat": 41.0, "lng": -87.0, "label": "Current Location", "type": "current"},
+                {"lat": 39.0, "lng": -86.0, "label": "Pickup", "type": "pickup"},
+                {"lat": 36.0, "lng": -86.0, "label": "Dropoff", "type": "dropoff"},
+            ],
+        }
+
+    monkeypatch.setattr("trip_planner.views.get_route", fake_get_route)
+
+    response = api_client.post("/api/v1/plan-trip/", valid_payload, format="json")
+    assert response.status_code == 200
+
+    segments = response.data["trip_segments"]
+    assert segments[0]["type"] == "DRIVING"
+    assert segments[0]["label"] == "Drive: Chicago, IL -> Indianapolis, IN"
+    assert segments[1]["type"] == "ON_DUTY_NOT_DRIVING"
+    assert segments[1]["label"] == "Pickup"
+    assert segments[1]["location"] == "Indianapolis, IN"
+
+
 def test_plan_trip_long_drive_includes_break_segment(monkeypatch, api_client, valid_payload):
     def fake_get_route(current, pickup, dropoff):
         return {
