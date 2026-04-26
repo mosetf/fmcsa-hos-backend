@@ -31,6 +31,7 @@ def build_log_sheets(segments: list[TripSegment]) -> list[dict]:
 
 
 def _split_segments_by_day(segments: list[TripSegment]) -> list[TripSegment]:
+    """Split all segments so each returned segment belongs to a single calendar day."""
     split: list[TripSegment] = []
     for segment in sorted(segments, key=lambda item: item.start):
         split.extend(_split_one_segment(segment))
@@ -38,6 +39,7 @@ def _split_segments_by_day(segments: list[TripSegment]) -> list[TripSegment]:
 
 
 def _split_one_segment(segment: TripSegment) -> list[TripSegment]:
+    """Split one segment at midnight boundaries while preserving proportional distance."""
     if segment.end <= segment.start:
         return []
 
@@ -60,6 +62,7 @@ def _split_one_segment(segment: TripSegment) -> list[TripSegment]:
 
 
 def _build_day_sheet(day: str, day_segments: list[TripSegment]) -> dict:
+    """Build one daily log sheet with fixed FMCSA rows, totals, and remarks."""
     day_date = datetime.fromisoformat(day).date()
     tzinfo = day_segments[0].start.tzinfo if day_segments else None
     day_start = _day_boundary(day_date, tzinfo)
@@ -117,6 +120,7 @@ def _build_day_sheet(day: str, day_segments: list[TripSegment]) -> dict:
 
 
 def _fill_day_gaps(day_segments: list[TripSegment], day_start: datetime, day_end: datetime) -> list[TripSegment]:
+    """Fill uncovered portions of a day with synthetic off-duty segments."""
     normalized: list[TripSegment] = []
     cursor = day_start
 
@@ -157,6 +161,7 @@ def _fill_day_gaps(day_segments: list[TripSegment], day_start: datetime, day_end
 
 
 def _clip_to_day(segment: TripSegment, day_start: datetime, day_end: datetime) -> TripSegment | None:
+    """Clip one segment to the active day boundaries and rescale its distance."""
     start = max(segment.start, day_start)
     end = min(segment.end, day_end)
     if end <= start:
@@ -172,6 +177,7 @@ def _clip_to_day(segment: TripSegment, day_start: datetime, day_end: datetime) -
 
 
 def _trim_segment_start(segment: TripSegment, new_start: datetime) -> TripSegment | None:
+    """Trim a segment start forward and rescale distance for the remaining duration."""
     if new_start >= segment.end:
         return None
 
@@ -185,4 +191,5 @@ def _trim_segment_start(segment: TripSegment, new_start: datetime) -> TripSegmen
 
 
 def _day_boundary(day_date, tzinfo):
+    """Return the midnight boundary for a date while preserving timezone awareness."""
     return datetime.combine(day_date, time.min, tzinfo=tzinfo)
