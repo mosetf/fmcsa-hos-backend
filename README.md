@@ -1,21 +1,44 @@
 # FMCSA HOS Backend
 
-Django + DRF API for planning truck trips and simulating FMCSA Hours of Service.
+This repository contains the Django REST API that powers the FMCSA Hours of Service trip planner.
+It accepts a trip request, resolves locations, builds a route, simulates Hours of Service compliance, and returns structured trip segments and daily log sheets.
 
-## Current Phase Status
-- Phase 1: Complete (versioned endpoint, ORS route service, Swagger, pytest endpoint coverage)
-- Phase 2: Complete (HOS simulation engine wired to endpoint, trip segment serialization)
-- Phase 3+: Pending
+## What This Backend Does
 
-## API Versioning
+- Geocodes the current location, pickup, and dropoff points
+- Requests truck-safe routing from OpenRouteService
+- Simulates Hours of Service rules across the full trip
+- Builds duty-status segments for driving, on-duty, off-duty, and sleeper berth time
+- Generates FMCSA-style daily log sheets from the simulated segments
+- Returns route metadata, summary totals, and log details for the frontend
+
+## Technology Stack
+
+- Python 3.14
+- Django
+- Django REST Framework
+- drf-spectacular for OpenAPI schema and Swagger UI
+- django-cors-headers for browser access from the frontend
+- gunicorn for production serving
+- pytest and pytest-django for testing
+
+## External APIs
+
+- OpenRouteService Geocoding API
+- OpenRouteService Directions API
+
+OpenRouteService is used to resolve locations and build the route polyline and leg summaries. The backend keeps the HOS logic local so the compliance simulation is deterministic and testable.
+
+## API Surface
+
 All business endpoints are versioned under `/api/v1/`.
 
-## Endpoints
 - `POST /api/v1/plan-trip/?detail=compact|full`
-- `GET /api/schema/` (OpenAPI schema)
-- `GET /api/docs/` (Swagger UI)
+- `GET /api/schema/`
+- `GET /api/docs/`
 
-## Request Contract
+### Request Contract
+
 `POST /api/v1/plan-trip/?detail=compact|full`
 
 ```json
@@ -28,39 +51,68 @@ All business endpoints are versioned under `/api/v1/`.
 }
 ```
 
-`departure_datetime` is optional. If omitted, backend defaults to local date at `06:00`.
+`departure_datetime` is optional. If omitted, the backend defaults to the current local server date and time.
 
-`detail=compact` is default.
+`detail=compact` is the default.
 
-`detail=full` adds non-essential metadata for diagnostics.
+`detail=full` includes additional route and log metadata for diagnostics.
 
 `debug=true` can include raw polyline arrays for troubleshooting.
 
-## Response Contract (Phase 2)
-```json
-{
-  "route": {
-    "legs": [],
-    "total_distance_miles": 0,
-    "total_duration_hours": 0,
-    "polyline_encoded": "string",
-    "waypoints": []
-  },
-  "trip_segments": [
-    {
-      "type": "ON_DUTY_NOT_DRIVING|DRIVING|OFF_DUTY|SLEEPER_BERTH",
-      "label": "string",
-      "start": "ISO datetime",
-      "end": "ISO datetime",
-      "distance_miles": 0,
-      "location": "string|null"
-    }
-  ],
-  "log_sheets": []
-}
-```
+### Response Shape
 
-Structured errors:
+The response includes:
+
+- `route`
+- `trip_segments`
+- `log_sheets`
+- `log_details`
+
+The route contains total distance, total duration, waypoints, and the encoded polyline. Trip segments describe each duty-status block with start/end timestamps, labels, distances, and locations.
+
+## HOS Engine
+
+The HOS engine is the rule layer that turns a route into duty-status time blocks.
+
+### Core logic
+
+- Driving time is allocated across route legs.
+- On-duty non-driving time is inserted for operational actions such as pickup or staging where needed.
+- Off-duty breaks are inserted when the driving window requires them.
+- Sleeper berth and reset behavior are represented as separate segments where applicable.
+- The engine tracks cycle hours and emits `CYCLE_EXHAUSTED` when the request cannot be completed within the available hours.
+
+### Why this is done in code
+
+The compliance logic is implemented in Python instead of relying on a third-party HOS service so that:
+
+- the behavior is deterministic
+- edge cases can be tested directly
+- the frontend only renders the result instead of re-deriving rules
+
+## Log Builder
+
+The log builder converts the HOS segments into FMCSA-style daily log sheets.
+
+It is responsible for:
+
+- laying out the 24-hour graph grid
+- mapping each segment onto the correct duty-status row
+- generating the remarks section from segment changes
+- calculating per-status totals
+- producing paper-style sheets that resemble the FMCSA driver daily log format
+
+The rendered sheet is intentionally close to the paper reference:
+
+- continuous horizontal duty lines
+- vertical transitions at status changes
+- labeled totals on the right side
+- remarks and shipping document fields below the grid
+
+## Error Handling
+
+Structured errors returned by the API:
+
 - `INVALID_INPUT` -> `400`
 - `CYCLE_EXHAUSTED` -> `400`
 - `GEOCODING_FAILED` -> `422`
@@ -68,6 +120,7 @@ Structured errors:
 - `HOS_SIMULATION_FAILED` -> `422`
 
 ## Local Setup
+
 ```bash
 python -m venv venv
 source venv/bin/activate
@@ -76,7 +129,15 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+## Render Deploy
+
+- Root directory: `fmcsa-hos-backend`
+- Build command: `pip install -r requirements.txt`
+- Start command: `gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --timeout 120`
+- Or use the bundled `Procfile`
+
 ## Environment Variables
+
 Copy `.env.example` to `.env`.
 
 - `ORS_API_KEY`
@@ -86,12 +147,17 @@ Copy `.env.example` to `.env`.
 - `ALLOWED_HOSTS` (optional, comma-separated)
 
 ## Testing
+
 Tests are run with `pytest`.
 
 ```bash
 pytest -q
 ```
 
-Scope:
-- Endpoint-first API behavior tests
-- Known edge cases per phase
+Coverage focus:
+
+- endpoint behavior
+- route planning
+- HOS simulation
+- log sheet generation
+- settings and environment validation
