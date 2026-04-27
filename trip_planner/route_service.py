@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from typing import Dict, List
 
 import requests
@@ -109,6 +110,7 @@ def _validate_route_output(
         raise RoutingError("Route contains a leg with non-positive duration")
 
 
+@lru_cache(maxsize=256)
 def geocode(location: str, api_key: str) -> Dict[str, float | str]:
     """Geocode one location string into a normalized `{lat, lng, label}` mapping."""
     params = {"api_key": api_key, "text": location, "size": 1}
@@ -166,14 +168,7 @@ def _request_directions(
             raise RoutingError(f"ORS error: HTTP {response.status_code}") from None
 
     data = response.json()
-    features = data.get("features", [])
-    if not features:
-        raise RoutingError("No route returned by ORS")
-
-    feature = features[0]
-    props = feature.get("properties", {})
-    summary = props.get("summary", {})
-    geometry = feature.get("geometry", {}).get("coordinates", [])
+    summary, geometry, segments = _extract_route_payload(data)
 
     if not isinstance(geometry, list) or not geometry:
         raise RoutingError("Route geometry format was not recognized")
@@ -182,6 +177,7 @@ def _request_directions(
         "distance_miles": round(float(summary.get("distance", 0.0)), 2),
         "duration_hours": round(float(summary.get("duration", 0.0)) / 3600, 2),
         "polyline": [[lat, lng] for lng, lat in geometry],
+        "segments": segments,
     }
 
 
@@ -191,36 +187,30 @@ def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
     if not api_key:
         raise RoutingError("ORS_API_KEY is missing")
 
-    current_geo = geocode(current, api_key)
-    time.sleep(0.2)
-    pickup_geo = geocode(pickup, api_key)
-    time.sleep(0.2)
-    dropoff_geo = geocode(dropoff, api_key)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        current_future = pool.submit(geocode, current, api_key)
+        pickup_future = pool.submit(geocode, pickup, api_key)
+        dropoff_future = pool.submit(geocode, dropoff, api_key)
+
+        current_geo = current_future.result()
+        pickup_geo = pickup_future.result()
+        dropoff_geo = dropoff_future.result()
 
     current_coord = [current_geo["lng"], current_geo["lat"]]
     pickup_coord = [pickup_geo["lng"], pickup_geo["lat"]]
     dropoff_coord = [dropoff_geo["lng"], dropoff_geo["lat"]]
 
-    leg_one = _request_directions([current_coord, pickup_coord], api_key)
-    time.sleep(0.2)
-    leg_two = _request_directions([pickup_coord, dropoff_coord], api_key)
-    time.sleep(0.2)
     full_route = _request_directions([current_coord, pickup_coord, dropoff_coord], api_key)
-
-    legs = [
-        {
-            "from": current,
-            "to": pickup,
-            "distance_miles": leg_one["distance_miles"],
-            "duration_hours": leg_one["duration_hours"],
-        },
-        {
-            "from": pickup,
-            "to": dropoff,
-            "distance_miles": leg_two["distance_miles"],
-            "duration_hours": leg_two["duration_hours"],
-        },
-    ]
+    legs = _build_legs_from_full_route(
+        full_route=full_route,
+        current=current,
+        pickup=pickup,
+        dropoff=dropoff,
+        api_key=api_key,
+        current_coord=current_coord,
+        pickup_coord=pickup_coord,
+        dropoff_coord=dropoff_coord,
+    )
 
     waypoints = [
         {
@@ -263,3 +253,77 @@ def get_route(current: str, pickup: str, dropoff: str) -> Dict[str, object]:
         "polyline_point_count": len(simplified_polyline),
         "waypoints": waypoints,
     }
+
+
+def _extract_route_payload(data: Dict[str, object]) -> tuple[Dict[str, object], List[List[float]], List[Dict[str, object]]]:
+    """Normalize ORS route payloads across GeoJSON and JSON response variants."""
+    features = data.get("features", [])
+    if isinstance(features, list) and features:
+        feature = features[0]
+        props = feature.get("properties", {})
+        summary = props.get("summary", {})
+        geometry = feature.get("geometry", {}).get("coordinates", [])
+        segments = props.get("segments", [])
+        return summary, geometry, segments if isinstance(segments, list) else []
+
+    routes = data.get("routes", [])
+    if isinstance(routes, list) and routes:
+        route = routes[0]
+        summary = route.get("summary", {})
+        geometry = route.get("geometry", {}).get("coordinates", [])
+        segments = route.get("segments", [])
+        return summary, geometry, segments if isinstance(segments, list) else []
+
+    raise RoutingError("No route returned by ORS")
+
+
+def _build_legs_from_full_route(
+    full_route: Dict[str, object],
+    current: str,
+    pickup: str,
+    dropoff: str,
+    api_key: str,
+    current_coord: List[float],
+    pickup_coord: List[float],
+    dropoff_coord: List[float],
+) -> List[Dict[str, object]]:
+    """Build per-leg route summaries from the full ORS route response when possible."""
+    segments = full_route.get("segments", [])
+    if isinstance(segments, list) and len(segments) >= 2:
+        first, second = segments[0], segments[1]
+        return [
+            {
+                "from": current,
+                "to": pickup,
+                "distance_miles": round(float(first.get("distance", 0.0)), 2),
+                "duration_hours": round(float(first.get("duration", 0.0)) / 3600, 2),
+            },
+            {
+                "from": pickup,
+                "to": dropoff,
+                "distance_miles": round(float(second.get("distance", 0.0)), 2),
+                "duration_hours": round(float(second.get("duration", 0.0)) / 3600, 2),
+            },
+        ]
+
+    # Fallback for non-standard ORS payloads or tests that mock the older path.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        leg_one_future = pool.submit(_request_directions, [current_coord, pickup_coord], api_key)
+        leg_two_future = pool.submit(_request_directions, [pickup_coord, dropoff_coord], api_key)
+        leg_one = leg_one_future.result()
+        leg_two = leg_two_future.result()
+
+    return [
+        {
+            "from": current,
+            "to": pickup,
+            "distance_miles": leg_one["distance_miles"],
+            "duration_hours": leg_one["duration_hours"],
+        },
+        {
+            "from": pickup,
+            "to": dropoff,
+            "distance_miles": leg_two["distance_miles"],
+            "duration_hours": leg_two["duration_hours"],
+        },
+    ]
